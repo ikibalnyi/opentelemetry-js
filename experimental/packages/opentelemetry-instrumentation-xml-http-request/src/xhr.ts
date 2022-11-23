@@ -74,6 +74,8 @@ export interface XMLHttpRequestInstrumentationConfig
   ignoreUrls?: Array<string | RegExp>;
   /** Function for adding custom attributes on the span */
   applyCustomAttributesOnSpan?: XHRCustomAttributeFunction;
+  /** Require a parent span to be present to create new span for requests. */
+  requireParentForSpans?: boolean;
 }
 
 /**
@@ -333,15 +335,22 @@ export class XMLHttpRequestInstrumentation extends InstrumentationBase<XMLHttpRe
       this._diag.debug('ignoring span as url matches ignored url');
       return;
     }
-    const spanName = `HTTP ${method.toUpperCase()}`;
+    const currentSpan = this.tracer.getSpan(ctx);
 
-    const currentSpan = this.tracer.startSpan(spanName, {
-      kind: api.SpanKind.CLIENT,
-      attributes: {
-        [SemanticAttributes.HTTP_METHOD]: method,
-        [SemanticAttributes.HTTP_URL]: parseUrl(url).toString(),
-      },
-    });
+    if (this._getConfig().requireParent === true && currentSpan === undefined) {
+      currentSpan = this.tracer.wrapSpanContext(INVALID_SPAN_CONTEXT);
+    } else {
+      const spanName = `HTTP ${method.toUpperCase()}`;
+
+      currentSpan = this.tracer.startSpan(spanName, {
+        kind: api.SpanKind.CLIENT,
+        attributes: {
+          [SemanticAttributes.HTTP_METHOD]: method,
+          [SemanticAttributes.HTTP_URL]: parseUrl(url).toString(),
+        },
+      });
+    }
+
 
     currentSpan.addEvent(EventNames.METHOD_OPEN);
 
